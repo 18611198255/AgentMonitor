@@ -22,7 +22,7 @@ from dataclasses import asdict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from agentmonitor import aggregator, index
+from agentmonitor import aggregator, alerts, index
 from agentmonitor.constants import PORT, SESSIONS_DIR
 from agentmonitor.detectors.cli import CLIDetector
 from agentmonitor.detectors.web import WebDetector
@@ -229,6 +229,8 @@ class Handler(SimpleHTTPRequestHandler):
             })
         elif path == "/api/stats":
             self._send(200, {"ok": True, **aggregator.stats()})
+        elif path == "/api/alerts":
+            self._send(200, {"ok": True, "alerts": alerts.recent()})
         elif path in ("/", "/index.html", "/dashboard.html"):
             self._serve_dashboard()
         else:
@@ -254,11 +256,25 @@ class Handler(SimpleHTTPRequestHandler):
         pass  # 静默日志
 
 
+def _alert_loop():
+    """后台告警循环：每 30 秒触发一次 alerts.check()（内部已 notify）。"""
+    while True:
+        try:
+            for _ in alerts.check():
+                pass
+        except Exception:
+            pass
+        # 碎片化 sleep（30 × 1s），便于进程退出时快速回收线程
+        for _ in range(30):
+            time.sleep(1)
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     # 启动即建索引表（同步、快），再后台重建（扫 489 个 jsonl 需几秒，别阻塞 serve_forever）
     index.init_db()
     threading.Thread(target=index.rebuild, daemon=True).start()
+    threading.Thread(target=_alert_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True  # 主线程退出时回收请求线程
     print(f"Agent Monitor 服务运行中: http://127.0.0.1:{port}/", flush=True)
