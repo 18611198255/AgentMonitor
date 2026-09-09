@@ -92,6 +92,38 @@ def upsert_daily_usage(s: Session):
         con.close()
 
 
+def refresh_daily_usage():
+    """从 sessions 表全量重算 daily_usage（幂等）。
+
+    运行中活跃会话每 3s 被 upsert 进 sessions；daily_usage 是 (date, project)
+    聚合，若沿用累加式 upsert_daily_usage 会重复累加失真，故每次从 sessions 全量
+    重算（sessions 仅数百行，成本可忽略）。
+    """
+    con = _connect()
+    try:
+        con.row_factory = sqlite3.Row
+        buckets = {}
+        for r in con.execute(
+                "SELECT project, last_active, tokens_in, tokens_out, cost "
+                "FROM sessions").fetchall():
+            date = datetime.fromtimestamp(r["last_active"]).strftime("%Y-%m-%d")
+            acc = buckets.setdefault((date, r["project"]), [0, 0, 0.0, 0])
+            acc[0] += r["tokens_in"]
+            acc[1] += r["tokens_out"]
+            acc[2] += r["cost"]
+            acc[3] += 1
+        con.execute("DELETE FROM daily_usage")
+        for (date, project), (ti, to, cost, cnt) in buckets.items():
+            con.execute(
+                "INSERT INTO daily_usage "
+                "(date, project, tokens_in, tokens_out, cost, session_count) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (date, project, ti, to, cost, cnt))
+        con.commit()
+    finally:
+        con.close()
+
+
 def search_sessions(q: str = "", project: str = ""):
     """按关键词 / 项目过滤会话，返回 dict 列表（按 last_active 降序）。"""
     con = _connect()

@@ -207,6 +207,13 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 # 活跃模式：合并 CLI/网页版探测器结果（原有逻辑不变）
                 sessions = merge_sessions(CLIDetector().detect(), WebDetector().detect())
+                # 运行中增量写索引：真实会话（有 jsonl 的）upsert 进 sessions，
+                # daily_usage 从 sessions 全量重算（幂等，避免累加失真）。
+                for s in sessions:
+                    if not s.file_path:
+                        continue  # 占位会话（无 jsonl）不进索引
+                    index.upsert_session(s)
+                index.refresh_daily_usage()
                 self._send(200, {"ok": True, "time": time.time(),
                                  "sessions": [_serialize_session(s) for s in sessions]})
         elif path == "/api/pi-procs":
