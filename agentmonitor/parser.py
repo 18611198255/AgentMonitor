@@ -39,6 +39,7 @@ class Session:
     jumpable: bool = False
     source: str = ""              # cli | web
     pid: str = ""
+    task: str = ""                # 用户最后一条指令摘要（供历史搜索 F4）
 
 
 # ---------- 时间解析 ----------
@@ -198,6 +199,14 @@ def home_cwd_title(first_user):
     return s if s else tokens[:60]
 
 
+def summarize_user(text):
+    """把一条 user 指令概括成简洁的一行（移植 V2 monitor_server.py:356-362）。"""
+    s = " ".join((text or "").replace("\r", " ").replace("\n", " ").split())
+    if len(s) <= 240:
+        return s
+    return s[:240] + "…"
+
+
 # ---------- 主解析 ----------
 
 def parse_session_jsonl(path, now=None):
@@ -229,6 +238,7 @@ def parse_session_jsonl(path, now=None):
     cost = 0.0
     exchanges = 0
     first_user = ""
+    last_user = ""
     tool_paths = []
     uwork = False  # 自最近一次用户输入后是否跑过工具/延续推进
 
@@ -324,8 +334,10 @@ def parse_session_jsonl(path, now=None):
                         if isinstance(b, dict) and b.get("type") == "text":
                             utxt = b.get("text", "")
                             break
-                if utxt and not first_user:
-                    first_user = utxt
+                if utxt:
+                    if not first_user:
+                        first_user = utxt
+                    last_user = utxt
 
     if not session_id:
         return None
@@ -382,4 +394,5 @@ def parse_session_jsonl(path, now=None):
         cost=cost,
         current_tool=last_tool,
         exchanges=exchanges,
+        task=summarize_user(last_user),
     )
