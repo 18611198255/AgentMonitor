@@ -43,7 +43,7 @@ python3 -m agentmonitor.server 9000       # 指定端口
 | GET | `/api/pi-procs` | 当前真实在跑的 pi CLI 进程（pid + tty + cwd，绕过缓存） |
 | GET | `/api/jump?file=<path>` | 跳转到该 jsonl 对应的 iTerm2 标签页（白名单校验） |
 | POST | `/api/kill` | `{"pid": "..."}` 终止指定 CLI 会话（白名单校验） |
-| POST | `/api/restart` | `{"cwd": "..."}` 在原 cwd 重启 pi 会话 |
+| POST | `/api/restart` | `{"pid": "...", "cwd": "..."}` 终止后在原 cwd 重启 pi 会话（白名单校验） |
 
 所有 API 响应均 `Cache-Control: no-store`；除看板页与 `/api/*` 外一律 404。
 

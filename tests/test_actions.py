@@ -9,10 +9,12 @@ kill_session / restart_session 依赖真实进程 / iTerm，故破坏性/外联�
 真实的 kill / restart 端到端验证由 Task 13 统一做。
 """
 import io
+import json
 import unittest
 from unittest import mock
 
 from agentmonitor import actions
+from agentmonitor.detectors.base import SessionRef
 from agentmonitor.server import Handler
 
 
@@ -59,6 +61,47 @@ class TestDoPostBodyGuard(unittest.TestCase):
         h._send = mock.Mock()
         Handler.do_POST(h)
         h._send.assert_called_once_with(400, {"ok": False, "result": "bad_body"})
+
+
+class TestRestartValidation(unittest.TestCase):
+    def _post(self, body):
+        h = _FakeHandler()
+        raw = json.dumps(body).encode()
+        h.headers = {"Content-Length": str(len(raw))}
+        h.rfile = io.BytesIO(raw)
+        h.path = "/api/restart"
+        h._send = mock.Mock()
+        Handler.do_POST(h)
+        return h
+
+    @mock.patch("agentmonitor.server.actions")
+    @mock.patch("agentmonitor.server.CLIDetector")
+    def test_restart_rejects_non_whitelisted_pid(self, MockDet, MockActions):
+        MockDet.return_value.detect.return_value = [SessionRef(cwd="/tmp/a", pid="1")]
+        h = self._post({"pid": "999", "cwd": "/tmp/a"})
+        self.assertEqual(h._send.call_args[0][0], 403)
+        MockActions.kill_session.assert_not_called()
+        MockActions.restart_session.assert_not_called()
+
+    @mock.patch("agentmonitor.server.actions")
+    @mock.patch("agentmonitor.server.CLIDetector")
+    def test_restart_rejects_cwd_not_in_live_sessions(self, MockDet, MockActions):
+        MockDet.return_value.detect.return_value = [SessionRef(cwd="/tmp/a", pid="1")]
+        h = self._post({"pid": "1", "cwd": "/tmp/elsewhere"})
+        self.assertEqual(h._send.call_args[0][0], 403)
+        MockActions.kill_session.assert_not_called()
+        MockActions.restart_session.assert_not_called()
+
+    @mock.patch("agentmonitor.server.actions")
+    @mock.patch("agentmonitor.server.CLIDetector")
+    def test_restart_kills_then_restarts(self, MockDet, MockActions):
+        MockDet.return_value.detect.return_value = [SessionRef(cwd="/tmp/a", pid="1")]
+        MockActions.kill_session.return_value = True
+        MockActions.restart_session.return_value = True
+        h = self._post({"pid": "1", "cwd": "/tmp/a"})
+        self.assertEqual(h._send.call_args[0][0], 200)
+        MockActions.kill_session.assert_called_once_with("1")
+        MockActions.restart_session.assert_called_once_with("/tmp/a")
 
 
 if __name__ == "__main__":

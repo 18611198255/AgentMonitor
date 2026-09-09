@@ -151,6 +151,8 @@ main{max-width:1180px;margin:0 auto;padding:20px 24px 48px}
 .btn.jump:hover{background:var(--accent-tint)}
 .btn.kill{color:var(--red);border-color:#fecaca}
 .btn.kill:hover{background:#fef2f2}
+.btn.restart{color:var(--accent);border-color:#bae6fd}
+.btn.restart:hover{background:var(--accent-tint)}
 
 /* history list */
 #historyList{display:flex;flex-direction:column;gap:8px}
@@ -340,9 +342,11 @@ function cardHTML(s){
             : s.source === 'web' ? '<span class="src src-web">网页版</span>' : '';
   const canJump = !!(s.jumpable || s.source === 'cli') && s.file_path;
   const canKill = s.source === 'cli' && s.pid;
+  const canRestart = canKill && s.cwd;
   const tool = s.current_tool ? '<span class="meta tool" title="' + esc(s.current_tool) + '">⚙ ' + esc(s.current_tool) + '</span>' : '';
   const model = s.model ? '<span class="meta">' + esc(s.model) + '</span>' : '';
   const btnJump = canJump ? '<button class="btn jump" data-file="' + esc(s.file_path) + '">⇥ 去终端</button>' : '';
+  const btnRestart = canRestart ? '<button class="btn restart" data-pid="' + esc(s.pid) + '" data-cwd="' + esc(s.cwd) + '">重启</button>' : '';
   const btnKill = canKill ? '<button class="btn kill" data-pid="' + esc(s.pid) + '">终止</button>' : '';
   return '<div class="card">' +
     '<div class="card-head">' +
@@ -354,7 +358,7 @@ function cardHTML(s){
     '<div class="card-foot">' +
       '<span class="metric"><b>' + fmtTok(s.tokens_total) + '</b> tokens</span>' +
       '<span class="metric cost"><b>' + fmtCost(s.cost) + '</b></span>' +
-      src + '<span class="spacer"></span>' + btnJump + btnKill +
+      src + '<span class="spacer"></span>' + btnJump + btnRestart + btnKill +
     '</div>' +
   '</div>';
 }
@@ -514,6 +518,13 @@ function doKill(pid){
     .then(d => { toast(d.ok ? '已终止会话' : ('终止失败：' + (d.result || ''))); loadSessions(); })
     .catch(() => {});
 }
+function doRestart(pid, cwd){
+  if (!confirm('确定重启该 CLI 会话（pid=' + pid + '）？\n将终止当前 pi 进程并在原目录重新拉起，请谨慎。')) return;
+  fetch('/api/restart', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pid: pid, cwd: cwd})})
+    .then(r => r.json())
+    .then(d => { toast(d.ok ? '已重启会话' : ('重启失败：' + (d.result || ''))); loadSessions(); })
+    .catch(() => {});
+}
 
 /* ---------------- events ---------------- */
 let searchTimer = null;
@@ -526,8 +537,10 @@ backBtn.addEventListener('click', () => {
 cardsEl.addEventListener('click', e => {
   const jump = e.target.closest('.jump');
   const kill = e.target.closest('.kill');
+  const restart = e.target.closest('.restart');
   if (jump) doJump(jump.getAttribute('data-file'));
   else if (kill) doKill(kill.getAttribute('data-pid'));
+  else if (restart) doRestart(restart.getAttribute('data-pid'), restart.getAttribute('data-cwd'));
 });
 alertBtn.addEventListener('click', e => {
   e.stopPropagation();

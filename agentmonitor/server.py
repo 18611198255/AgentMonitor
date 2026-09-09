@@ -273,9 +273,20 @@ class Handler(SimpleHTTPRequestHandler):
             ok = actions.kill_session(pid)
             self._send(200, {"ok": ok, "result": "killed" if ok else "kill_failed"})
         elif path == "/api/restart":
+            pid = str(data.get("pid", "")).strip()
             cwd = str(data.get("cwd", "")).strip()
-            if not cwd or not cwd.startswith("/"):
+            if not pid or not cwd or not cwd.startswith("/"):
                 self._send(400, {"ok": False, "result": "bad_request"})
+                return
+            # 与 /api/kill 同等严格：pid 白名单 + cwd 白名单（都取自当前 live CLI 会话）
+            refs = CLIDetector().detect(force=True)
+            pids = {r.pid for r in refs}
+            cwds = {r.cwd for r in refs}
+            if pid not in pids or cwd not in cwds:
+                self._send(403, {"ok": False, "result": "forbidden"})
+                return
+            if not actions.kill_session(pid):
+                self._send(200, {"ok": False, "result": "kill_failed"})
                 return
             ok = actions.restart_session(cwd)
             self._send(200, {"ok": ok, "result": "restarted" if ok else "restart_failed"})
