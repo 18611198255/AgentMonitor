@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pi 任务看板</title>
+<style>
+:root{
+  --bg:#f8fafc; --card:#ffffff; --border:#e2e8f0;
+  --text:#0f172a; --muted:#64748b; --faint:#94a3b8;
+  --accent:#0ea5e9; --accent-soft:#38bdf8; --accent-tint:#e0f2fe;
+  --green:#16a34a; --orange:#f59e0b; --red:#ef4444; --gray:#94a3b8; --blue:#3b82f6;
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent);text-decoration:none}
+
+/* ---------- hero ---------- */
+.hero{
+  background:linear-gradient(120deg,#0ea5e9 0%,#38bdf8 60%,#7dd3fc 100%);
+  color:#fff; padding:18px 24px;
+}
+.hero-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.hero-title{display:flex;align-items:center;gap:12px}
+.logo{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px}
+.hero h1{font-size:20px;font-weight:700;letter-spacing:.3px}
+.hero .sub{font-size:12px;opacity:.9;margin-top:2px}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
+.pill.up{background:rgba(22,163,74,.2);color:#eafff1}
+.pill.down{background:rgba(255,255,255,.18);color:#fff}
+.hero-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hero-chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  background:rgba(255,255,255,.18);padding:4px 10px;border-radius:999px;white-space:nowrap}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.hero-today{display:flex;align-items:baseline;gap:8px;font-size:12px}
+.hero-today .hero-cost{font-size:18px;font-weight:700}
+.hero-today .hero-tok{opacity:.9}
+
+/* alert bell */
+.alert-btn{position:relative;background:rgba(255,255,255,.18);border:none;color:#fff;
+  width:38px;height:38px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.alert-btn:hover{background:rgba(255,255,255,.3)}
+.alert-btn svg{width:19px;height:19px}
+.alert-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 4px;
+  background:var(--red);color:#fff;border-radius:999px;font-size:11px;font-weight:700;
+  display:none;align-items:center;justify-content:center;border:2px solid #38bdf8}
+
+/* alerts popover */
+.alerts-pop{position:absolute;top:8px;right:0;width:340px;max-width:calc(100vw - 24px);
+  background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.16);
+  z-index:50;overflow:hidden}
+.alerts-pop .pop-head{padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700;font-size:13px;display:flex;justify-content:space-between}
+.alerts-pop .pop-body{max-height:300px;overflow-y:auto}
+.alert-item{padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:3px}
+.alert-item:last-child{border-bottom:none}
+.alert-item .msg{font-size:13px;color:var(--text)}
+.alert-item .ts{font-size:11px;color:var(--faint)}
+.rule{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;align-self:flex-start}
+.rule-stuck{background:#fee2e2;color:#dc2626}
+.rule-silent{background:#fef3c7;color:#d97706}
+.rule-piweb_down{background:#e0f2fe;color:#0284c7}
+.alert-empty{padding:18px;text-align:center;color:var(--faint);font-size:13px}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:20px 24px 48px}
+
+/* toolbar */
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.search{flex:1;min-width:220px;max-width:420px;position:relative}
+.search input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--border);border-radius:10px;
+  font-size:14px;background:#fff;color:var(--text);outline:none}
+.search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,165,233,.12)}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--faint)}
+.toggle{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+.toggle input{accent-color:var(--accent);width:15px;height:15px}
+.back-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);
+  background:#fff;border-radius:10px;font-size:13px;color:var(--accent);cursor:pointer;font-weight:600}
+.back-btn:hover{background:var(--accent-tint)}
+
+/* stat cards */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:18px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.stat-label{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.stat-label::before{content:"";width:9px;height:9px;border-radius:3px;background:var(--accent);display:inline-block}
+.stat-rows{display:flex;flex-direction:column;gap:6px}
+.stat-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.stat-row span{color:var(--muted);font-size:12px}
+.stat-row b{font-variant-numeric:tabular-nums}
+.stat-row.cost{border-top:1px dashed var(--border);padding-top:6px;margin-top:2px}
+.stat-row.cost b{color:var(--accent);font-size:15px}
+
+/* charts row */
+.charts-row{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:860px){.charts-row{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.panel h2{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text)}
+#trendChart{min-height:120px}
+#trendChart svg{display:block}
+.empty-chart{padding:32px 0;text-align:center;color:var(--faint);font-size:13px}
+
+/* top projects */
+#topProjects{list-style:none;display:flex;flex-direction:column;gap:12px}
+.top-row{display:flex;align-items:center;gap:10px}
+.rank{width:22px;height:22px;border-radius:6px;background:var(--accent-tint);color:var(--accent);
+  font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.top-info{flex:1;min-width:0}
+.top-name{font-size:13px;font-weight:600;display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
+.top-name .top-sessions{font-weight:400;color:var(--faint);font-size:11px}
+.top-bar{height:5px;background:#eef2f7;border-radius:3px;overflow:hidden}
+.top-bar i{display:block;height:100%;background:linear-gradient(90deg,#38bdf8,#0ea5e9);border-radius:3px}
+.top-cost{font-size:13px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* section title */
+.section-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;margin:6px 0 12px}
+.section-title .cnt{color:var(--faint);font-weight:400;font-size:13px}
+
+/* cards grid */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px;transition:box-shadow .15s,border-color .15s}
+.card:hover{box-shadow:0 4px 14px rgba(15,23,42,.09);border-color:#cbd5e1}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.proj{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:14px;min-width:0}
+.proj-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.proj-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0}
+.card-sub{font-size:12.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:baseline;gap:10px;min-height:18px}
+.card-sub .age{color:var(--faint);font-size:12px;white-space:nowrap;flex-shrink:0}
+.card-meta{display:flex;flex-wrap:wrap;gap:6px}
+.meta{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:6px;padding:2px 7px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta.tool{color:#0369a1;background:#e0f2fe}
+.card-foot{display:flex;align-items:center;gap:9px;border-top:1px solid #f1f5f9;padding-top:10px;flex-wrap:wrap}
+.metric{font-size:12px;color:var(--muted)}
+.metric b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600}
+.metric.cost b{color:var(--accent)}
+.src{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
+.src-cli{background:var(--accent-tint);color:#0369a1}
+.src-web{background:#ede9fe;color:#7c3aed}
+.spacer{flex:1}
+.btn{font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--border);
+  background:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+.btn.jump{color:var(--accent);border-color:#bae6fd}
+.btn.jump:hover{background:var(--accent-tint)}
+.btn.kill{color:var(--red);border-color:#fecaca}
+.btn.kill:hover{background:#fef2f2}
+
+/* history list */
+#historyList{display:flex;flex-direction:column;gap:8px}
+.hrow{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;
+  display:flex;justify-content:space-between;gap:14px;align-items:center;box-shadow:var(--shadow)}
+.hrow:hover{border-color:#cbd5e1}
+.h-main{min-width:0;flex:1}
+.h-title{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.h-title .proj{font-size:14px}
+.h-task{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:640px}
+.h-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
+.h-meta{font-size:11px;color:var(--faint)}
+.h-tokens{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.h-tokens .c{color:var(--accent)}
+
+.empty{padding:48px 0;text-align:center;color:var(--faint);font-size:14px}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+  background:#0f172a;color:#fff;padding:9px 18px;border-radius:10px;font-size:13px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:99}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+footer{max-width:1180px;margin:0 auto;padding:0 24px 26px;color:var(--faint);font-size:12px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-title">
+      <div class="logo">π</div>
+      <div>
+        <h1>Pi 任务看板</h1>
+        <div class="sub">AgentMonitor V3 · 实时会话监控</div>
+      </div>
+      <span class="pill down" id="piwebPill">Pi Web 检测中</span>
+    </div>
+    <div class="hero-right">
+      <div class="hero-chips" id="heroChips"></div>
+      <div class="hero-today" id="heroToday"></div>
+      <div style="position:relative">
+        <button class="alert-btn" id="alertBtn" title="告警" aria-label="告警">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="alert-badge" id="alertBadge">0</span>
+        </button>
+        <div class="alerts-pop" id="alertsPop" hidden>
+          <div class="pop-head"><span>最近告警</span><span class="ts" id="alertCount"></span></div>
+          <div class="pop-body" id="alertList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="search" id="searchInput" placeholder="搜索项目 / 任务 / 模型关键词…" autocomplete="off">
+    </div>
+    <label class="toggle"><input type="checkbox" id="historyToggle"> 只看历史</label>
+    <button class="back-btn" id="backBtn" hidden>← 返回活跃视图</button>
+  </div>
+
+  <div class="stat-grid" id="statGrid"></div>
+
+  <div class="charts-row">
+    <div class="panel">
+      <h2>近 7 天成本趋势</h2>
+      <div id="trendChart"></div>
+    </div>
+    <div class="panel">
+      <h2>TOP 项目（按花费）</h2>
+      <ol id="topProjects"></ol>
+    </div>
+  </div>
+
+  <div class="section-title" id="activeSection">活跃会话 <span class="cnt" id="sessionCount"></span></div>
+  <div class="section-title" id="historySection" hidden>历史会话</div>
+
+  <div class="cards" id="cards"></div>
+  <div id="historyList"></div>
+  <div class="empty" id="empty" hidden>暂无会话</div>
+</main>
+
+<footer>AgentMonitor V3 · 浅色仪表盘 · 每 3s 刷新会话 / 30s 刷新统计与告警</footer>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ---------------- helpers ---------------- */
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function fmtAge(sec){
+  const s = Math.max(0, Number(sec) || 0);
+  if (s < 60) return '刚刚';
+  if (s < 3600) return Math.floor(s/60) + ' 分钟前';
+  if (s < 86400) return Math.floor(s/3600) + ' 小时前';
+  return Math.floor(s/86400) + ' 天前';
+}
+function fmtTok(n){
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
+  if (n >= 1e4) return (n/1e3).toFixed(1).replace(/\.0$/,'') + 'K';
+  return n.toLocaleString('en-US');
+}
+function fmtCost(n){
+  n = Number(n) || 0;
+  if (n === 0) return '$0.00';
+  if (n >= 1000) return '$' + n.toLocaleString('en-US', {maximumFractionDigits:2});
+  return '$' + n.toFixed(4).replace(/\.?0+$/,'');
+}
+function fmtTime(ts){
+  const d = new Date((Number(ts) || 0) * 1000);
+  if (isNaN(d.getTime())) return '';
+  const p = x => String(x).padStart(2,'0');
+  return p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+const STATUS = {
+  running: {label:'运行中', color:'#16a34a'},
+  waiting: {label:'等你输入', color:'#f59e0b'},
+  stuck:   {label:'疑似卡住', color:'#ef4444'},
+  idle:    {label:'空闲', color:'#94a3b8'},
+  none:    {label:'等待第一个任务', color:'#3b82f6'}
+};
+const RULE_LABEL = {stuck:'卡住', silent:'静默', piweb_down:'Pi Web 离线'};
+
+/* ---------------- elements ---------------- */
+const $ = id => document.getElementById(id);
+const cardsEl = $('cards'), historyListEl = $('historyList'), emptyEl = $('empty');
+const searchInput = $('searchInput'), historyToggle = $('historyToggle'), backBtn = $('backBtn');
+const heroChips = $('heroChips'), heroToday = $('heroToday');
+const alertBtn = $('alertBtn'), alertBadge = $('alertBadge'), alertsPop = $('alertsPop'),
+      alertList = $('alertList'), alertCount = $('alertCount');
+const piwebPill = $('piwebPill'), sessionCount = $('sessionCount');
+const activeSection = $('activeSection'), historySection = $('historySection');
+
+function fetchJson(url, opts){
+  return fetch(url, opts).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+
+/* ---------------- mode ---------------- */
+function currentMode(){
+  return (searchInput.value.trim() !== '' || historyToggle.checked) ? 'history' : 'active';
+}
+function currentQuery(){
+  const q = searchInput.value.trim();
+  const parts = [];
+  if (q) parts.push('q=' + encodeURIComponent(q));
+  if (historyToggle.checked) parts.push('all=1');
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+/* ---------------- hero summary ---------------- */
+function updateHeroSummary(sessions){
+  const counts = {running:0, waiting:0, stuck:0};
+  (sessions || []).forEach(s => { if (s.status in counts) counts[s.status]++; });
+  heroChips.innerHTML =
+    '<span class="chip"><i style="background:#4ade80"></i>运行中 ' + counts.running + '</span>' +
+    '<span class="chip"><i style="background:#fbbf24"></i>等你 ' + counts.waiting + '</span>' +
+    '<span class="chip"><i style="background:#f87171"></i>卡住 ' + counts.stuck + '</span>';
+}
+
+/* ---------------- active cards ---------------- */
+function renderActive(sessions){
+  activeSection.hidden = false; historySection.hidden = true; historyListEl.innerHTML = '';
+  updateHeroSummary(sessions);
+  sessionCount.textContent = sessions.length ? '(' + sessions.length + ')' : '';
+  if (!sessions.length){ cardsEl.innerHTML=''; emptyEl.hidden=false; emptyEl.textContent='暂无活跃会话'; return; }
+  emptyEl.hidden = true;
+  cardsEl.innerHTML = sessions.map(cardHTML).join('');
+}
+function cardHTML(s){
+  const st = STATUS[s.status] || STATUS.idle;
+  const age = fmtAge(s.age_seconds);
+  const activity = s.activity || (s.status === 'none' ? '等待第一个任务' : '');
+  const src = s.source === 'cli' ? '<span class="src src-cli">CLI</span>'
+            : s.source === 'web' ? '<span class="src src-web">网页版</span>' : '';
+  const canJump = !!(s.jumpable || s.source === 'cli') && s.file_path;
+  const canKill = s.source === 'cli' && s.pid;
+  const tool = s.current_tool ? '<span class="meta tool" title="' + esc(s.current_tool) + '">⚙ ' + esc(s.current_tool) + '</span>' : '';
+  const model = s.model ? '<span class="meta">' + esc(s.model) + '</span>' : '';
+  const btnJump = canJump ? '<button class="btn jump" data-file="' + esc(s.file_path) + '">⇥ 去终端</button>' : '';
+  const btnKill = canKill ? '<button class="btn kill" data-pid="' + esc(s.pid) + '">终止</button>' : '';
+  return '<div class="card">' +
+    '<div class="card-head">' +
+      '<span class="proj" title="' + esc(s.cwd) + '"><i class="proj-dot"></i><span class="proj-name">' + esc(s.project_name || '未命名') + '</span></span>' +
+      '<span class="badge" style="color:' + st.color + ';background:' + st.color + '1a;border:1px solid ' + st.color + '40">' + st.label + '</span>' +
+    '</div>' +
+    '<div class="card-sub"><span>' + esc(activity) + '</span><span class="age">' + age + '</span></div>' +
+    '<div class="card-meta">' + tool + model + '</div>' +
+    '<div class="card-foot">' +
+      '<span class="metric"><b>' + fmtTok(s.tokens_total) + '</b> tokens</span>' +
+      '<span class="metric cost"><b>' + fmtCost(s.cost) + '</b></span>' +
+      src + '<span class="spacer"></span>' + btnJump + btnKill +
+    '</div>' +
+  '</div>';
+}
+
+/* ---------------- history list ---------------- */
+function renderHistory(sessions){
+  activeSection.hidden = true; historySection.hidden = false; cardsEl.innerHTML = '';
+  if (!sessions.length){ historyListEl.innerHTML=''; emptyEl.hidden=false; emptyEl.textContent='暂无历史记录'; return; }
+  emptyEl.hidden = true;
+  historyListEl.innerHTML = sessions.map(h => {
+    const st = STATUS[h.status] || STATUS.idle;
+    const src = h.source === 'cli' ? '<span class="src src-cli">CLI</span>'
+              : h.source === 'web' ? '<span class="src src-web">网页版</span>' : '';
+    return '<div class="hrow">' +
+      '<div class="h-main">' +
+        '<div class="h-title">' +
+          '<span class="badge" style="color:' + st.color + ';background:' + st.color + '1a;border:1px solid ' + st.color + '40">' + st.label + '</span>' +
+          '<span class="proj">' + esc(h.project_name || '未命名') + '</span>' + src +
+        '</div>' +
+        '<div class="h-task" title="' + esc(h.task) + '">' + esc(h.task || '（无任务摘要）') + '</div>' +
+        '<div class="h-meta">' + esc(h.model || '') + '</div>' +
+      '</div>' +
+      '<div class="h-side">' +
+        '<div class="h-tokens">' + fmtTok(h.tokens_total) + ' tokens · <span class="c">' + fmtCost(h.cost) + '</span></div>' +
+        '<div class="h-meta">' + fmtAge(h.age_seconds) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ---------------- sessions polling ---------------- */
+async function loadSessions(){
+  const mode = currentMode();
+  backBtn.hidden = (mode === 'active');
+  try{
+    const ad = await fetchJson('/api/sessions');
+    if (mode === 'active') renderActive(ad.sessions || []);
+    else updateHeroSummary(ad.sessions || []);
+  }catch(e){ /* 静默，保持上次渲染 */ }
+  if (mode === 'history'){
+    try{
+      const hd = await fetchJson('/api/sessions' + currentQuery());
+      renderHistory(hd.sessions || []);
+    }catch(e){}
+  }
+}
+
+/* ---------------- stats ---------------- */
+function statCard(label, v){
+  return '<div class="stat-card">' +
+    '<div class="stat-label">' + label + '</div>' +
+    '<div class="stat-rows">' +
+      '<div class="stat-row"><span>输入 token</span><b>' + fmtTok(v.tokens_in) + '</b></div>' +
+      '<div class="stat-row"><span>输出 token</span><b>' + fmtTok(v.tokens_out) + '</b></div>' +
+      '<div class="stat-row"><span>合计 token</span><b>' + fmtTok((v.tokens_in||0)+(v.tokens_out||0)) + '</b></div>' +
+      '<div class="stat-row cost"><span>花费</span><b>' + fmtCost(v.cost) + '</b></div>' +
+    '</div></div>';
+}
+function renderStatCards(d){
+  $('statGrid').innerHTML = statCard('今日', d.today || {}) + statCard('本周', d.week || {}) + statCard('累计', d.total || {});
+  const t = d.today || {};
+  heroToday.innerHTML = '<span class="hero-cost">' + fmtCost(t.cost) + '</span><span class="hero-tok">今日 ' + fmtTok((t.tokens_in||0)+(t.tokens_out||0)) + ' tokens</span>';
+}
+function renderTopProjects(list){
+  const top = (list || []).slice(0, 5);
+  const el = $('topProjects');
+  if (!top.length){ el.innerHTML = '<div class="empty-chart">暂无项目数据</div>'; return; }
+  const max = Math.max.apply(null, top.map(p => p.cost || 0));
+  el.innerHTML = top.map((p, i) => {
+    const w = max > 0 ? ((p.cost || 0) / max * 100) : 0;
+    return '<li class="top-row">' +
+      '<span class="rank">' + (i+1) + '</span>' +
+      '<div class="top-info">' +
+        '<div class="top-name"><span>' + esc(p.project || '未命名') + '</span><span class="top-sessions">' + (p.session_count||0) + ' 会话</span></div>' +
+        '<div class="top-bar"><i style="width:' + w.toFixed(1) + '%"></i></div>' +
+      '</div>' +
+      '<span class="top-cost">' + fmtCost(p.cost) + '</span>' +
+    '</li>';
+  }).join('');
+}
+function renderTrend(trend){
+  const el = $('trendChart');
+  const data = trend || [];
+  const W = 560, H = 160, padL = 40, padR = 10, padT = 14, padB = 26;
+  const max = Math.max.apply(null, data.map(t => t.cost || 0));
+  if (!data.length || max <= 0){ el.innerHTML = '<div class="empty-chart">近 7 天暂无成本数据</div>'; return; }
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const n = data.length, slot = innerW / n, barW = Math.min(34, slot * 0.5);
+  let grid = '';
+  for (let g = 0; g <= 3; g++){
+    const y = padT + innerH * g / 3, val = max * (1 - g/3);
+    grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W-padR) + '" y2="' + y.toFixed(1) + '" stroke="#eef2f7" stroke-width="1"/>';
+    grid += '<text x="' + (padL-6) + '" y="' + (y+3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#94a3b8">$' + val.toFixed(2) + '</text>';
+  }
+  let bars = '';
+  data.forEach((t, i) => {
+    const h = Math.max(2, (t.cost || 0) / max * innerH);
+    const x = padL + slot * i + (slot - barW) / 2;
+    const y = padT + (innerH - h);
+    bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="url(#gbar)" stroke="#0ea5e9" stroke-width="0.5"><title>' + t.date + ' · $' + (t.cost||0).toFixed(4) + '</title></rect>';
+    bars += '<text x="' + (x + barW/2).toFixed(1) + '" y="' + (H-7) + '" text-anchor="middle" font-size="10" fill="#94a3b8">' + String(t.date||'').slice(5) + '</text>';
+  });
+  el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" role="img" aria-label="近7天成本趋势">' +
+    '<defs><linearGradient id="gbar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>' +
+    grid + bars + '</svg>';
+}
+async function loadStats(){
+  try{
+    const d = await fetchJson('/api/stats');
+    renderStatCards(d); renderTopProjects(d.by_project); renderTrend(d.trend_7d);
+  }catch(e){}
+}
+
+/* ---------------- alerts ---------------- */
+function renderAlerts(alerts){
+  const n = (alerts || []).length;
+  alertBadge.textContent = n > 99 ? '99+' : n;
+  alertBadge.style.display = n ? 'inline-flex' : 'none';
+  alertCount.textContent = n ? n + ' 条' : '';
+  alertList.innerHTML = n
+    ? alerts.map(a => '<div class="alert-item">' +
+        '<span class="rule rule-' + esc(a.rule) + '">' + esc(RULE_LABEL[a.rule] || a.rule) + '</span>' +
+        '<span class="msg">' + esc(a.message) + '</span>' +
+        '<span class="ts">' + fmtTime(a.ts) + '</span>' +
+      '</div>').join('')
+    : '<div class="alert-empty">暂无告警</div>';
+}
+async function loadAlerts(){
+  try{ const d = await fetchJson('/api/alerts'); renderAlerts(d.alerts || []); }
+  catch(e){}
+}
+
+/* ---------------- services ---------------- */
+async function loadServices(){
+  try{
+    const d = await fetchJson('/api/services');
+    const up = !!(d && d.piweb && d.piweb.up);
+    piwebPill.className = 'pill ' + (up ? 'up' : 'down');
+    piwebPill.textContent = up ? 'Pi Web 在线' : 'Pi Web 离线';
+  }catch(e){}
+}
+
+/* ---------------- actions ---------------- */
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function doJump(file){
+  fetch('/api/jump?file=' + encodeURIComponent(file)).then(r => r.json()).then(d => {
+    if (!d.ok) toast('跳转失败：' + (d.result || ''));
+  }).catch(() => {});
+}
+function doKill(pid){
+  if (!confirm('确定终止该 CLI 会话（pid=' + pid + '）？\n此操作将结束对应 pi 进程，请谨慎。')) return;
+  fetch('/api/kill', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pid: pid})})
+    .then(r => r.json())
+    .then(d => { toast(d.ok ? '已终止会话' : ('终止失败：' + (d.result || ''))); loadSessions(); })
+    .catch(() => {});
+}
+
+/* ---------------- events ---------------- */
+let searchTimer = null;
+searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadSessions, 220); });
+historyToggle.addEventListener('change', loadSessions);
+backBtn.addEventListener('click', () => {
+  searchInput.value = ''; historyToggle.checked = false;
+  backBtn.hidden = true; loadSessions();
+});
+cardsEl.addEventListener('click', e => {
+  const jump = e.target.closest('.jump');
+  const kill = e.target.closest('.kill');
+  if (jump) doJump(jump.getAttribute('data-file'));
+  else if (kill) doKill(kill.getAttribute('data-pid'));
+});
+alertBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  alertsPop.hidden = !alertsPop.hidden;
+  if (!alertsPop.hidden) loadAlerts();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#alertBtn') && !e.target.closest('.alerts-pop')) alertsPop.hidden = true;
+});
+
+/* ---------------- boot + poll ---------------- */
+loadSessions(); loadStats(); loadAlerts(); loadServices();
+setInterval(loadSessions, 3000);
+setInterval(loadStats, 30000);
+setInterval(loadAlerts, 30000);
+setInterval(loadServices, 30000);
+</script>
+</body>
+</html>
