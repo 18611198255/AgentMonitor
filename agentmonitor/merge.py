@@ -18,7 +18,10 @@ from agentmonitor.parser import Session, parse_session_jsonl
 
 def _is_fresh(s: Session, now: float) -> bool:
     """jsonl mtime 是否仍在终端会话「长跑等输入」窗口内。"""
-    return (now - os.path.getmtime(s.file_path)) <= constants.USER_VISIBLE_WINDOW
+    try:
+        return (now - os.path.getmtime(s.file_path)) <= constants.USER_VISIBLE_WINDOW
+    except OSError:
+        return False  # jsonl 被并发删除，视为不新鲜
 
 
 def _make_placeholder(cwd: str, pid: str) -> Session:
@@ -55,7 +58,11 @@ def merge_sessions(
     for path in glob.glob(
         os.path.join(constants.SESSIONS_DIR, "**", "*.jsonl"), recursive=True
     ):
-        if now - os.path.getmtime(path) > constants.RECENT_WINDOW:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue  # jsonl 在 glob 与 getmtime 之间被删，跳过
+        if now - mtime > constants.RECENT_WINDOW:
             continue
         s = parse_session_jsonl(path, now)
         if not s:
@@ -91,7 +98,10 @@ def merge_sessions(
         if s.file_path in seen:
             continue
         is_live = bool(web_running_ids) and (s.session_id in web_running_ids)
-        mtime = os.path.getmtime(s.file_path)
+        try:
+            mtime = os.path.getmtime(s.file_path)
+        except OSError:
+            continue  # jsonl 被并发删除，跳过
         if is_live:                       # 真活：引擎正在调 LLM
             if now - mtime > constants.ACTIVE_WINDOW:
                 continue
