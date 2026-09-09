@@ -24,11 +24,13 @@ def days_ago(n):
     return (date.today() - timedelta(days=n)).strftime("%Y-%m-%d")
 
 
-def drow(date_str, project="p", tokens_in=0, tokens_out=0, cost=0.0,
-         session_count=1):
+def drow(date_str, project="p", tokens_in=0, tokens_out=0, tokens_total=None,
+         cost=0.0, session_count=1):
     """构造一条 daily_usage 行（与 index.query_daily 返回结构一致）。"""
+    if tokens_total is None:
+        tokens_total = tokens_in + tokens_out
     return {"date": date_str, "project": project, "tokens_in": tokens_in,
-            "tokens_out": tokens_out, "cost": cost,
+            "tokens_out": tokens_out, "tokens_total": tokens_total, "cost": cost,
             "session_count": session_count}
 
 
@@ -86,6 +88,22 @@ class TestAggregate(unittest.TestCase):
         self.assertEqual(mid["session_count"], 2)
         self.assertEqual(cheap["session_count"], 1)
 
+    def test_tokens_total_accumulated_independently(self):
+        # totalTokens 含 cache，可大于 in+out；聚合应直接累加 tokens_total 而非 in+out
+        rows = [
+            drow(days_ago(0), tokens_in=100, tokens_out=50, tokens_total=200,
+                 cost=0.001),
+            drow(days_ago(0), tokens_in=10, tokens_out=5, tokens_total=20,
+                 cost=0.0001),
+        ]
+        res = _aggregate(rows)
+        self.assertEqual(res["today"]["tokens_total"], 220)   # 200 + 20
+        self.assertEqual(res["today"]["tokens_in"], 110)
+        self.assertEqual(res["today"]["tokens_out"], 55)
+        self.assertEqual(res["total"]["tokens_total"], 220)
+        self.assertEqual(res["by_project"][0]["tokens_total"], 220)
+        self.assertEqual(res["trend_7d"][-1]["tokens_total"], 220)
+
     def test_trend_7d_fills_missing_dates_in_order(self):
         rows = [
             drow(days_ago(0), tokens_in=5, tokens_out=2, cost=0.001),
@@ -104,16 +122,17 @@ class TestAggregate(unittest.TestCase):
     def test_empty_rows_all_zero(self):
         res = _aggregate([])
         self.assertEqual(res["today"],
-                         {"tokens_in": 0, "tokens_out": 0, "cost": 0.0})
+                         {"tokens_in": 0, "tokens_out": 0, "tokens_total": 0, "cost": 0.0})
         self.assertEqual(res["week"],
-                         {"tokens_in": 0, "tokens_out": 0, "cost": 0.0})
+                         {"tokens_in": 0, "tokens_out": 0, "tokens_total": 0, "cost": 0.0})
         self.assertEqual(res["total"],
-                         {"tokens_in": 0, "tokens_out": 0, "cost": 0.0})
+                         {"tokens_in": 0, "tokens_out": 0, "tokens_total": 0, "cost": 0.0})
         self.assertEqual(res["by_project"], [])
         self.assertEqual(len(res["trend_7d"]), 7)
         for t in res["trend_7d"]:
             self.assertEqual(t["tokens_in"], 0)
             self.assertEqual(t["tokens_out"], 0)
+            self.assertEqual(t["tokens_total"], 0)
             self.assertEqual(t["cost"], 0.0)
 
 

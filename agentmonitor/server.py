@@ -166,7 +166,7 @@ def _row_to_dict(row):
         "project_name": row["project"], "model": row["model"], "task": row["task"],
         "status": row["status"], "activity": "", "current_tool": "",
         "age_seconds": int(time.time() - last_active), "tokens_in": row["tokens_in"],
-        "tokens_out": row["tokens_out"], "tokens_total": row["tokens_in"] + row["tokens_out"],
+        "tokens_out": row["tokens_out"], "tokens_total": row["tokens_total"],
         "cost": round(row["cost"], 6), "exchanges": 0, "live": False, "in_terminal": False,
         "jumpable": False, "source": row["source"], "pid": "",
     }

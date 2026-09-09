@@ -409,14 +409,14 @@ function statCard(label, v){
     '<div class="stat-rows">' +
       '<div class="stat-row"><span>输入 token</span><b>' + fmtTok(v.tokens_in) + '</b></div>' +
       '<div class="stat-row"><span>输出 token</span><b>' + fmtTok(v.tokens_out) + '</b></div>' +
-      '<div class="stat-row"><span>合计 token</span><b>' + fmtTok((v.tokens_in||0)+(v.tokens_out||0)) + '</b></div>' +
+      '<div class="stat-row"><span>合计 token</span><b>' + fmtTok(v.tokens_total||0) + '</b></div>' +
       '<div class="stat-row cost"><span>花费</span><b>' + fmtCost(v.cost) + '</b></div>' +
     '</div></div>';
 }
 function renderStatCards(d){
   $('statGrid').innerHTML = statCard('今日', d.today || {}) + statCard('本周', d.week || {}) + statCard('累计', d.total || {});
   const t = d.today || {};
-  heroToday.innerHTML = '<span class="hero-cost">' + fmtCost(t.cost) + '</span><span class="hero-tok">今日 ' + fmtTok((t.tokens_in||0)+(t.tokens_out||0)) + ' tokens</span>';
+  heroToday.innerHTML = '<span class="hero-cost">' + fmtCost(t.cost) + '</span><span class="hero-tok">今日 ' + fmtTok(t.tokens_total||0) + ' tokens</span>';
 }
 function renderTopProjects(list){
   const top = (list || []).slice(0, 5);

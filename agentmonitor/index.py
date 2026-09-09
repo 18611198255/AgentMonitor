@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   status       TEXT,
   tokens_in    INTEGER DEFAULT 0,
   tokens_out   INTEGER DEFAULT 0,
+  tokens_total INTEGER DEFAULT 0,
   cost         REAL DEFAULT 0,
   source       TEXT
 );
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS daily_usage (
   project       TEXT,
   tokens_in     INTEGER DEFAULT 0,
   tokens_out    INTEGER DEFAULT 0,
+  tokens_total  INTEGER DEFAULT 0,
   cost          REAL DEFAULT 0,
   session_count INTEGER DEFAULT 0,
   PRIMARY KEY (date, project)
@@ -46,13 +48,22 @@ def _connect():
 
 
 def init_db():
-    """建表（IF NOT EXISTS），幂等。"""
+    """建表（IF NOT EXISTS），幂等；老库缺 tokens_total 列则补列。"""
     con = _connect()
     try:
         con.executescript(_SCHEMA)
+        _ensure_column(con, "sessions", "tokens_total")
+        _ensure_column(con, "daily_usage", "tokens_total")
         con.commit()
     finally:
         con.close()
+
+
+def _ensure_column(con, table, column):
+    """检测表中缺列则 ALTER TABLE ADD COLUMN（老 DB 升级，派生缓存可安全补列）。"""
+    cols = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER DEFAULT 0")
 
 
 def upsert_session(s: Session):
@@ -62,11 +73,11 @@ def upsert_session(s: Session):
         con.execute(
             "INSERT OR REPLACE INTO sessions "
             "(session_id, file_path, cwd, project, model, task, created_at, "
-            " last_active, status, tokens_in, tokens_out, cost, source) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " last_active, status, tokens_in, tokens_out, tokens_total, cost, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (s.session_id, s.file_path, s.cwd, s.project_name, s.model, s.task,
              s.created_at, s.last_active_at, s.status, s.tokens_in,
-             s.tokens_out, s.cost, s.source))
+             s.tokens_out, s.tokens_total, s.cost, s.source))
         con.commit()
     finally:
         con.close()
@@ -79,14 +90,15 @@ def upsert_daily_usage(s: Session):
     try:
         con.execute(
             "INSERT INTO daily_usage "
-            "(date, project, tokens_in, tokens_out, cost, session_count) "
-            "VALUES (?, ?, ?, ?, ?, 1) "
+            "(date, project, tokens_in, tokens_out, tokens_total, cost, session_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1) "
             "ON CONFLICT(date, project) DO UPDATE SET "
             "tokens_in = tokens_in + excluded.tokens_in, "
             "tokens_out = tokens_out + excluded.tokens_out, "
+            "tokens_total = tokens_total + excluded.tokens_total, "
             "cost = cost + excluded.cost, "
             "session_count = session_count + 1",
-            (date, s.project_name, s.tokens_in, s.tokens_out, s.cost))
+            (date, s.project_name, s.tokens_in, s.tokens_out, s.tokens_total, s.cost))
         con.commit()
     finally:
         con.close()
@@ -104,21 +116,22 @@ def refresh_daily_usage():
         con.row_factory = sqlite3.Row
         buckets = {}
         for r in con.execute(
-                "SELECT project, last_active, tokens_in, tokens_out, cost "
+                "SELECT project, last_active, tokens_in, tokens_out, tokens_total, cost "
                 "FROM sessions").fetchall():
             date = datetime.fromtimestamp(r["last_active"]).strftime("%Y-%m-%d")
-            acc = buckets.setdefault((date, r["project"]), [0, 0, 0.0, 0])
+            acc = buckets.setdefault((date, r["project"]), [0, 0, 0, 0.0, 0])
             acc[0] += r["tokens_in"]
             acc[1] += r["tokens_out"]
-            acc[2] += r["cost"]
-            acc[3] += 1
+            acc[2] += r["tokens_total"]
+            acc[3] += r["cost"]
+            acc[4] += 1
         con.execute("DELETE FROM daily_usage")
-        for (date, project), (ti, to, cost, cnt) in buckets.items():
+        for (date, project), (ti, to, tt, cost, cnt) in buckets.items():
             con.execute(
                 "INSERT INTO daily_usage "
-                "(date, project, tokens_in, tokens_out, cost, session_count) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (date, project, ti, to, cost, cnt))
+                "(date, project, tokens_in, tokens_out, tokens_total, cost, session_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (date, project, ti, to, tt, cost, cnt))
         con.commit()
     finally:
         con.close()
@@ -153,7 +166,7 @@ def query_daily(start: str, end: str):
     try:
         con.row_factory = sqlite3.Row
         rows = con.execute(
-            "SELECT date, project, tokens_in, tokens_out, cost, session_count "
+            "SELECT date, project, tokens_in, tokens_out, tokens_total, cost, session_count "
             "FROM daily_usage WHERE date BETWEEN ? AND ? ORDER BY date",
             (start, end)).fetchall()
         return [dict(r) for r in rows]

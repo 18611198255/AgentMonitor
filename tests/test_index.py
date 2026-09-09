@@ -40,8 +40,10 @@ def epoch_local(date_str, hour=12):
 
 
 def make_session(session_id=SID, project="projA", task="", model="deepseek-v4",
-                 tokens_in=100, tokens_out=50, cost=0.001,
+                 tokens_in=100, tokens_out=50, tokens_total=None, cost=0.001,
                  last_active_at=BASE, cwd="/tmp/projA", source="cli"):
+    if tokens_total is None:
+        tokens_total = tokens_in + tokens_out
     return Session(
         session_id=session_id,
         file_path="/tmp/fake.jsonl",
@@ -53,6 +55,7 @@ def make_session(session_id=SID, project="projA", task="", model="deepseek-v4",
         created_at=last_active_at - 100,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
+        tokens_total=tokens_total,
         cost=cost,
         source=source,
     )
@@ -85,6 +88,7 @@ class TestUpsertAndSearch(IndexTestBase):
         self.assertEqual(r["cwd"], "/tmp/projA")
         self.assertEqual(r["tokens_in"], 100)
         self.assertEqual(r["tokens_out"], 50)
+        self.assertEqual(r["tokens_total"], 150)
         self.assertAlmostEqual(r["cost"], 0.001, places=6)
         self.assertEqual(r["source"], "cli")
 
@@ -131,9 +135,11 @@ class TestDailyUsage(IndexTestBase):
         b = next(r for r in rows if r["project"] == "B")
         self.assertEqual(a["tokens_in"], 140)
         self.assertEqual(a["tokens_out"], 70)
+        self.assertEqual(a["tokens_total"], 210)
         self.assertAlmostEqual(a["cost"], 0.0015, places=6)
         self.assertEqual(a["session_count"], 2)
         self.assertEqual(b["tokens_in"], 7)
+        self.assertEqual(b["tokens_total"], 10)
         self.assertEqual(b["session_count"], 1)
 
     def test_query_daily_range_inclusive(self):
@@ -165,7 +171,7 @@ class TestRebuild(IndexTestBase):
                              "stopReason": "endTurn",
                              "content": [{"type": "text", "text": "好的"}],
                              "usage": {"input": 30, "output": 10,
-                                       "totalTokens": 40,
+                                       "totalTokens": 55,
                                        "cost": {"total": 0.0005}}}},
             ]
             path = os.path.join(
@@ -181,6 +187,7 @@ class TestRebuild(IndexTestBase):
             self.assertEqual(rows[0]["session_id"], SID)
             self.assertEqual(rows[0]["project"], "projX")
             self.assertEqual(rows[0]["tokens_in"], 30)
+            self.assertEqual(rows[0]["tokens_total"], 55)
             self.assertEqual(rows[0]["task"], "帮我修复登录 bug")
 
             daily = query_daily("2000-01-01", "2100-01-01")
@@ -188,6 +195,7 @@ class TestRebuild(IndexTestBase):
             self.assertEqual(daily[0]["project"], "projX")
             self.assertEqual(daily[0]["session_count"], 1)
             self.assertEqual(daily[0]["tokens_in"], 30)
+            self.assertEqual(daily[0]["tokens_total"], 55)
         finally:
             constants.SESSIONS_DIR = orig_sess
             shutil.rmtree(sess_dir, ignore_errors=True)

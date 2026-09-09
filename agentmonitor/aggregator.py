@@ -9,12 +9,13 @@ from agentmonitor import index
 
 
 def _sum(rows):
-    """对一组 daily_usage 行求和，返回 {tokens_in, tokens_out, cost}。"""
+    """对一组 daily_usage 行求和，返回 {tokens_in, tokens_out, tokens_total, cost}。"""
     tokens_in = sum(r["tokens_in"] for r in rows)
     tokens_out = sum(r["tokens_out"] for r in rows)
+    tokens_total = sum(r["tokens_total"] for r in rows)
     cost = round(sum((r["cost"] for r in rows), 0.0), 6)
     return {"tokens_in": int(tokens_in), "tokens_out": int(tokens_out),
-            "cost": cost}
+            "tokens_total": int(tokens_total), "cost": cost}
 
 
 def _aggregate(rows):
@@ -29,15 +30,18 @@ def _aggregate(rows):
     by_project = {}
     for r in rows:
         acc = by_project.setdefault(r["project"], {
-            "tokens_in": 0, "tokens_out": 0, "cost": 0.0, "session_count": 0})
+            "tokens_in": 0, "tokens_out": 0, "tokens_total": 0,
+            "cost": 0.0, "session_count": 0})
         acc["tokens_in"] += r["tokens_in"]
         acc["tokens_out"] += r["tokens_out"]
+        acc["tokens_total"] += r["tokens_total"]
         acc["cost"] += r["cost"]
         acc["session_count"] += r["session_count"]
     by_project_list = [
         {"project": p,
          "tokens_in": int(v["tokens_in"]),
          "tokens_out": int(v["tokens_out"]),
+         "tokens_total": int(v["tokens_total"]),
          "cost": round(v["cost"], 6),
          "session_count": int(v["session_count"])}
         for p, v in by_project.items()
@@ -48,9 +52,11 @@ def _aggregate(rows):
     daily = {}
     for r in rows:
         acc = daily.setdefault(r["date"],
-                               {"tokens_in": 0, "tokens_out": 0, "cost": 0.0})
+                               {"tokens_in": 0, "tokens_out": 0,
+                                "tokens_total": 0, "cost": 0.0})
         acc["tokens_in"] += r["tokens_in"]
         acc["tokens_out"] += r["tokens_out"]
+        acc["tokens_total"] += r["tokens_total"]
         acc["cost"] += r["cost"]
     trend_7d = []
     for i in range(6, -1, -1):
@@ -60,11 +66,13 @@ def _aggregate(rows):
                 "date": d,
                 "tokens_in": int(daily[d]["tokens_in"]),
                 "tokens_out": int(daily[d]["tokens_out"]),
+                "tokens_total": int(daily[d]["tokens_total"]),
                 "cost": round(daily[d]["cost"], 6),
             })
         else:
             trend_7d.append(
-                {"date": d, "tokens_in": 0, "tokens_out": 0, "cost": 0.0})
+                {"date": d, "tokens_in": 0, "tokens_out": 0,
+                 "tokens_total": 0, "cost": 0.0})
 
     return {
         "today": _sum(today_rows),
