@@ -248,6 +248,9 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             self._send(400, {"ok": False, "result": "bad_request"})
             return
+        if not isinstance(data, dict):
+            self._send(400, {"ok": False, "result": "bad_body"})
+            return
 
         path = urlparse(self.path).path
         if path == "/api/kill":

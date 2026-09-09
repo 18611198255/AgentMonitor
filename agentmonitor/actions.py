@@ -60,8 +60,10 @@ def restart_session(cwd: str) -> bool:
     if not cwd or not cwd.startswith("/"):
         return False
 
-    # 单引号转义：' → '\''（shell 单引号内嵌入单引号的标准写法）
-    escaped = cwd.replace("'", "'\\''")
+    # 三层转义（顺序敏感：先反斜杠 → 双引号 → 单引号）。
+    # cwd 会插进 applescript 双引号字符串 write text "cd '<escaped>' && pi" 里，
+    # 若只转义单引号，含 " 或 \ 的 cwd 可闭合字符串注入任意 applescript。
+    escaped = cwd.replace("\\", "\\\\").replace('"', '\\"').replace("'", "'\\''")
     script = (
         'tell application "iTerm2"\n'
         '    tell current window\n'
