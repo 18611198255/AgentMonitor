@@ -26,10 +26,10 @@ def _run(args):
 
 
 class CLIDetector(Detector):
-    def detect(self) -> list[SessionRef]:
+    def detect(self, force: bool = False) -> list[SessionRef]:
         global _CACHE
         now = time.time()
-        if now - _CACHE["t"] < CLI_CACHE_TTL:
+        if not force and now - _CACHE["t"] < CLI_CACHE_TTL:
             return _CACHE["data"]
 
         refs = []

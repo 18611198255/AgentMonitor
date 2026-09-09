@@ -1,0 +1,231 @@
+"""AgentMonitor V3 —— HTTP 服务层（路由 + iTerm 跳转 + 安全白名单）。
+
+整个工具的对外入口：`python3 -m agentmonitor.server [port]`（默认 8571）。
+
+移植自 V2 `monitor_server.py` 的 `Handler`（`_send`/`do_GET`/`_serve_dashboard`）、
+`jump_to_path`（iTerm 跳转）、`_path_within_sessions`（路径校验）、`_port_open`
+（端口健康检查）。V2 是单文件（dashboard.html 与代码同目录），V3 是包：
+server.py 在 agentmonitor/ 内，dashboard.html 在项目根，故 serve 静态文件用
+项目根 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))。
+
+路由白名单：除看板页与 /api/* 外一律 404，防泄露源码/.git 等。
+零第三方依赖（http.server / subprocess / socket / urllib / osascript）。
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from dataclasses import asdict
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from agentmonitor.constants import PORT, SESSIONS_DIR
+from agentmonitor.detectors.cli import CLIDetector
+from agentmonitor.detectors.web import WebDetector
+from agentmonitor.merge import merge_sessions
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# ---------- 路径校验 / 端口健康检查 ----------
+
+def _path_within_sessions(target):
+    """校验 target 是否落在 SESSIONS_DIR 内（防任意文件读取）。"""
+    if not target:
+        return False
+    try:
+        real = os.path.realpath(target)
+        base = os.path.realpath(SESSIONS_DIR)
+        return real == base or real.startswith(base + os.sep)
+    except Exception:
+        return False
+
+
+def _port_open(port, host="127.0.0.1", timeout=0.4):
+    """检测本机端口是否在监听（用于探测 pi-web 等子服务是否在跑）。"""
+    try:
+        s = socket.socket()
+        s.settimeout(timeout)
+        ok = s.connect_ex((host, port)) == 0
+        s.close()
+        return ok
+    except Exception:
+        return False
+
+
+# ---------- iTerm 跳转 ----------
+
+def jump_to_path(target_file):
+    """根据 jsonl 路径找到匹配的 iTerm2 会话并 select。
+
+    返回 ok:<uid> / iterm_script_failed / read_failed / no_session / jump_failed:<err>
+    """
+    # 1) pi 进程 → tty（跳转需实时 tty 匹配，跳过 3s 缓存）
+    refs = CLIDetector().detect(force=True)
+
+    # 2) iTerm sessions tty -> uniqueID
+    script = (
+        'tell application "iTerm2"\n'
+        '    set out to ""\n'
+        '    repeat with w in windows\n'
+        '        repeat with t in tabs of w\n'
+        '            repeat with s in sessions of t\n'
+        '                try\n'
+        '                    set out to out & tty of s & "|" & (the unique id of s) & linefeed\n'
+        '                end try\n'
+        '            end repeat\n'
+        '        end repeat\n'
+        '    end repeat\n'
+        '    return out\n'
+        'end tell'
+    )
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=8)
+        iterm_map = {}
+        for line in r.stdout.splitlines():
+            if "|" in line:
+                tt, uid = line.split("|", 1)
+                iterm_map[tt.strip()] = uid.strip()
+    except Exception:
+        return "iterm_script_failed"
+
+    # 3) 目标文件所在 cwd（找第一条 type=="session" 的 cwd）
+    target_cwd = ""
+    try:
+        with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    h = json.loads(line)
+                except Exception:
+                    continue
+                if h.get("type") == "session":
+                    target_cwd = h.get("cwd", "")
+                    break
+    except Exception:
+        return "read_failed"
+
+    # 4) 用 cwd 匹配 pi 进程 → tty → uniqueID
+    matched_uid = None
+    for ref in refs:
+        if ref.cwd != target_cwd:
+            continue
+        # 统一 tty 格式：info.tty 为 'ttysXXX' 或 '/dev/ttysXXX'
+        tty = ref.tty or ""
+        tty2 = tty if tty.startswith("/dev/") else ("/dev/" + tty if tty else "")
+        if tty2 and tty2 in iterm_map:
+            matched_uid = iterm_map[tty2]
+            break
+
+    if not matched_uid:
+        return "no_session"
+
+    jump = (
+        'tell application "iTerm2"\n'
+        '    activate\n'
+        '    repeat with w in windows\n'
+        '        repeat with t in tabs of w\n'
+        '            repeat with s in sessions of t\n'
+        '                try\n'
+        f'                    if (the unique id of s) = "{matched_uid}" then select s\n'
+        '                end try\n'
+        '            end repeat\n'
+        '        end repeat\n'
+        '    end repeat\n'
+        'end tell'
+    )
+    try:
+        subprocess.run(["osascript", "-e", jump], capture_output=True, timeout=8)
+        return f"ok:{matched_uid}"
+    except Exception as e:
+        return f"jump_failed:{e}"
+
+
+# ---------- HTTP 服务 ----------
+
+def _serialize_session(s):
+    """Session → dict（字段名 = dataclass 字段名），cost 四舍五入避免浮点噪声。"""
+    d = asdict(s)
+    d["cost"] = round(d["cost"], 6)
+    return d
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def _send(self, code, body, ctype="application/json", extra_headers=None):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body, ensure_ascii=False)
+        b = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(b)))
+        # API/HTML 始终禁止浏览器缓存旧数据（用户曾报"全关了还显示老任务"，原根因）
+        if ctype.startswith("text/html") or ctype.startswith("application/json"):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        if extra_headers:
+            for k, v in extra_headers.items():
+                self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/api/sessions":
+            sessions = merge_sessions(CLIDetector().detect(), WebDetector().detect())
+            self._send(200, {"ok": True, "time": time.time(),
+                             "sessions": [_serialize_session(s) for s in sessions]})
+        elif path == "/api/pi-procs":
+            # 当前真实在跑的 pi CLI 进程（pid + tty + cwd），绕过缓存
+            refs = CLIDetector().detect(force=True)
+            self._send(200, {"ok": True, "procs": [asdict(r) for r in refs]})
+        elif path == "/api/jump":
+            q = parse_qs(parsed.query)
+            target = q.get("file", [""])[0]
+            # 只允许跳转 SESSIONS_DIR 下的会话文件，防任意文件读取
+            if not _path_within_sessions(target):
+                self._send(403, {"ok": False, "result": "forbidden"})
+                return
+            res = jump_to_path(target)
+            self._send(200, {"ok": res.startswith("ok"), "result": res})
+        elif path == "/api/services":
+            self._send(200, {
+                "dashboard": {"up": True},
+                "piweb": {"up": _port_open(30141)},
+            })
+        elif path in ("/", "/index.html", "/dashboard.html"):
+            self._serve_dashboard()
+        else:
+            # 白名单：除看板页与 api 外一律 404，避免暴露源码/.git 等
+            self._send(404, {"ok": False, "result": "not_found"})
+
+    def _serve_dashboard(self):
+        # 读项目根 dashboard.html（V2 单文件与代码同目录，V3 移到项目根）
+        dash = os.path.join(PROJECT_ROOT, "dashboard.html")
+        try:
+            with open(dash, "r", encoding="utf-8") as f:
+                html = f.read()
+            self._send(200, html, "text/html; charset=utf-8")
+        except Exception:
+            self._send(404, "dashboard.html not found", "text/plain")
+
+    def log_message(self, *args):
+        pass  # 静默日志
+
+
+def main():
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.daemon_threads = True  # 主线程退出时回收请求线程
+    print(f"Agent Monitor 服务运行中: http://127.0.0.1:{port}/", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
