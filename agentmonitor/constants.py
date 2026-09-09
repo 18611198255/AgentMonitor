@@ -16,6 +16,8 @@ IDLE_THRESHOLD = 2 * STUCK_THRESHOLD
 RECENT_WINDOW = 24 * 3600    # 近 24h 视为活跃
 PROCESSLESS_STALE = 2 * 3600  # 无进程会话：距最近写入最长容忍 2 小时
 USER_VISIBLE_WINDOW = 90 * 60  # 终端会话"长跑等输入"窗口
+PIWEB_GRACE_WINDOW = 30 * 60   # 网页版"挂着"过渡窗口（非 idle 保留显示）
+ACTIVE_WINDOW = 24 * 3600      # 网页版真活跃会话 mtime 最长容忍
 
 # 探测器缓存（秒，与 V2 一致）
 CLI_CACHE_TTL = 3.0
