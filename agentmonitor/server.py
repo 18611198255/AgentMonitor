@@ -16,11 +16,13 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from agentmonitor import index
 from agentmonitor.constants import PORT, SESSIONS_DIR
 from agentmonitor.detectors.cli import CLIDetector
 from agentmonitor.detectors.web import WebDetector
@@ -152,6 +154,24 @@ def _serialize_session(s):
     return d
 
 
+def _row_to_dict(row):
+    """index 行 → dict，字段名与 Session dataclass 完全一致（历史/搜索归一化）。
+
+    index 列名 project/last_active → Session 字段 project_name/age_seconds，
+    让看板只消费一种形状（活跃模式 asdict 与历史模式同一契约）。
+    """
+    last_active = row["last_active"]
+    return {
+        "session_id": row["session_id"], "file_path": row["file_path"], "cwd": row["cwd"],
+        "project_name": row["project"], "model": row["model"], "task": row["task"],
+        "status": row["status"], "activity": "", "current_tool": "",
+        "age_seconds": int(time.time() - last_active), "tokens_in": row["tokens_in"],
+        "tokens_out": row["tokens_out"], "tokens_total": row["tokens_in"] + row["tokens_out"],
+        "cost": round(row["cost"], 6), "exchanges": 0, "live": False, "in_terminal": False,
+        "jumpable": False, "source": row["source"], "pid": "",
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json", extra_headers=None):
         if isinstance(body, (dict, list)):
@@ -175,9 +195,20 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/api/sessions":
-            sessions = merge_sessions(CLIDetector().detect(), WebDetector().detect())
-            self._send(200, {"ok": True, "time": time.time(),
-                             "sessions": [_serialize_session(s) for s in sessions]})
+            q = parse_qs(parsed.query)
+            query = q.get("q", [""])[0]
+            project = q.get("project", [""])[0]
+            all_flag = q.get("all", [""])[0]
+            if query or project or all_flag == "1":
+                # 历史/搜索模式：走 SQLite 索引（q / project / all=1）
+                rows = index.search_sessions(query, project)
+                self._send(200, {"ok": True, "time": time.time(),
+                                 "sessions": [_row_to_dict(r) for r in rows]})
+            else:
+                # 活跃模式：合并 CLI/网页版探测器结果（原有逻辑不变）
+                sessions = merge_sessions(CLIDetector().detect(), WebDetector().detect())
+                self._send(200, {"ok": True, "time": time.time(),
+                                 "sessions": [_serialize_session(s) for s in sessions]})
         elif path == "/api/pi-procs":
             # 当前真实在跑的 pi CLI 进程（pid + tty + cwd），绕过缓存
             refs = CLIDetector().detect(force=True)
@@ -223,6 +254,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
+    # 启动即建索引表（同步、快），再后台重建（扫 489 个 jsonl 需几秒，别阻塞 serve_forever）
+    index.init_db()
+    threading.Thread(target=index.rebuild, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True  # 主线程退出时回收请求线程
     print(f"Agent Monitor 服务运行中: http://127.0.0.1:{port}/", flush=True)
