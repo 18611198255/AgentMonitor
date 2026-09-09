@@ -22,7 +22,7 @@ from dataclasses import asdict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from agentmonitor import aggregator, alerts, index
+from agentmonitor import actions, aggregator, alerts, index
 from agentmonitor.constants import PORT, SESSIONS_DIR
 from agentmonitor.detectors.cli import CLIDetector
 from agentmonitor.detectors.web import WebDetector
@@ -235,6 +235,41 @@ class Handler(SimpleHTTPRequestHandler):
             self._serve_dashboard()
         else:
             # 白名单：除看板页与 api 外一律 404，避免暴露源码/.git 等
+            self._send(404, {"ok": False, "result": "not_found"})
+
+    def do_POST(self):
+        # 会话管理写操作：/api/kill、/api/restart（本期仅 CLI 会话，网页版无独立 pid）
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            self._send(400, {"ok": False, "result": "bad_request"})
+            return
+        try:
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception:
+            self._send(400, {"ok": False, "result": "bad_request"})
+            return
+
+        path = urlparse(self.path).path
+        if path == "/api/kill":
+            pid = str(data.get("pid", "")).strip()
+            if not pid:
+                self._send(400, {"ok": False, "result": "bad_request"})
+                return
+            # 先校验 pid 是当前 pi 进程（破坏性操作，白名单校验），再杀
+            pids = {r.pid for r in CLIDetector().detect(force=True)}
+            if pid not in pids:
+                self._send(200, {"ok": False, "result": "not_a_pi_process"})
+                return
+            ok = actions.kill_session(pid)
+            self._send(200, {"ok": ok, "result": "killed" if ok else "kill_failed"})
+        elif path == "/api/restart":
+            cwd = str(data.get("cwd", "")).strip()
+            if not cwd or not cwd.startswith("/"):
+                self._send(400, {"ok": False, "result": "bad_request"})
+                return
+            ok = actions.restart_session(cwd)
+            self._send(200, {"ok": ok, "result": "restarted" if ok else "restart_failed"})
+        else:
             self._send(404, {"ok": False, "result": "not_found"})
 
     def do_HEAD(self):
