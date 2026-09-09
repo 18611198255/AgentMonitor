@@ -202,6 +202,11 @@ class Handler(SimpleHTTPRequestHandler):
             # 白名单：除看板页与 api 外一律 404，避免暴露源码/.git 等
             self._send(404, {"ok": False, "result": "not_found"})
 
+    def do_HEAD(self):
+        # 不继承 SimpleHTTPRequestHandler.do_HEAD（会走 send_head→translate_path，
+        # 把路径解析到 cwd 后返回 200+Content-Length，泄露项目根源码/.git 的存在与大小）。
+        self._send(404, {"ok": False, "result": "not_found"})
+
     def _serve_dashboard(self):
         # 读项目根 dashboard.html（V2 单文件与代码同目录，V3 移到项目根）
         dash = os.path.join(PROJECT_ROOT, "dashboard.html")
