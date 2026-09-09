@@ -62,7 +62,12 @@ python3 -m agentmonitor.server 9000       # 指定端口
 - 守护日志：`/tmp/agentmonitor_watchdog_v3.log`
 - 服务日志：`/tmp/agentmonitor_server_v3.log`
 
-停止：`pkill -f 'agentmonitor.server'`（服务）、`kill $(cat /tmp/agentmonitor_watchdog_v3.pid)`（守护）。
+停止（**务必先杀 watchdog，再杀 server**——若先杀 server，watchdog 会在 10 秒内自动把它重新拉起，导致永远停不掉）：
+
+```bash
+kill $(cat /tmp/agentmonitor_watchdog_v3.pid)   # 1) 先杀守护，防止它 10s 内拉起 server
+pkill -f 'agentmonitor.server'                 # 2) 再杀服务本身
+```
 
 ## 技术
 
