@@ -22,7 +22,7 @@ from dataclasses import asdict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from agentmonitor import index
+from agentmonitor import aggregator, index
 from agentmonitor.constants import PORT, SESSIONS_DIR
 from agentmonitor.detectors.cli import CLIDetector
 from agentmonitor.detectors.web import WebDetector
@@ -227,6 +227,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "dashboard": {"up": True},
                 "piweb": {"up": _port_open(30141)},
             })
+        elif path == "/api/stats":
+            self._send(200, {"ok": True, **aggregator.stats()})
         elif path in ("/", "/index.html", "/dashboard.html"):
             self._serve_dashboard()
         else:
