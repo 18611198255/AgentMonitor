@@ -76,6 +76,7 @@ pkill -f 'agentmonitor.server'                       # 2) 再杀服务本身
 
 ## 技术
 
+- **Python 版本**：支持 **3.9+**（CI 矩阵实测 3.9 / 3.10 / 3.11 / 3.12 / 3.13 全通过）。
 - 零第三方依赖：Python 标准库（`http.server` / `sqlite3` / `subprocess` / `urllib` / `json` / `unittest`），前端原生 HTML/JS/CSS（无框架无 CDN）。
 - 模块化包：`parser`（jsonl→Session 唯一解析）、`detectors/`（CLI + 网页版探测器统一 `detect()` 接口）、`merge`（合并去重）、`index`（SQLite 索引）、`aggregator`（聚合）、`alerts`（告警）、`actions`（kill/restart）、`server`（HTTP 路由，唯一入口）。
 - 安全：`/api/jump` 路径白名单（仅 `~/.pi/agent/sessions` 内）、`/api/kill` 进程白名单、`HEAD` 统一 404、跳转脚本仅拼接 iTerm 自身返回的 `unique id`（防注入/防泄露源码）。
@@ -86,6 +87,22 @@ pkill -f 'agentmonitor.server'                       # 2) 再杀服务本身
 |----------|--------|------|
 | `AGENTMONITOR_PORT` | `8571` | 服务端口（watchdog 与 start.sh 共用） |
 | `AGENTMONITOR_PYTHON` | 自动探测 | 指定 Python 解释器（watchdog 拉起服务用） |
+
+## 常见问题
+
+**Q: 在 Python 3.9 上报 `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'`？**
+
+这曾经是个真实 bug（已修复，见 commit `75749e2`）。原因是代码里用了 `float | None` 这种 PEP 604 联合类型写法，**仅 Python 3.10+ 支持**。现已全部改为 `Optional[...]`，3.9 起可用。若你从旧版本升级，请拉取最新 `main`。
+
+**Q: 本地测试全过，CI 却挂在 3.9？**
+
+因为本地 Python 版本较高（如 3.13），掩盖了低版本语法/API 兼容问题。CI 跑 3.9–3.13 矩阵就是为了提前暴露这类问题。
+
+**Q: 端口被占用 / 想换端口？**
+
+```bash
+AGENTMONITOR_PORT=9000 ./start.sh
+```
 
 ## License
 
