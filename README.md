@@ -1,6 +1,9 @@
 # AgentMonitor V3 — Pi 运行状态监控看板
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![tests](https://github.com/18611198255/AgentMonitor/actions/workflows/test.yml/badge.svg)](https://github.com/18611198255/AgentMonitor/actions/workflows/test.yml)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#技术)
 
 一个**零侵入、只读**的本地看板，实时监控你跑的 **Pi 会话**（网页版 + CLI 版），
 聚合 Token/成本，异常告警，支持历史回看 + 搜索与会话管理。
