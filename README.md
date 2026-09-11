@@ -9,8 +9,8 @@
 ## 快速开始
 
 ```bash
-cd "/Users/kelvinjiang/Desktop/实用工具开发/AgentMonitor-v3"
-./start.sh            # 起 watchdog 守护 + 本地服务，并打开浏览器
+cd AgentMonitor          # 换成你 clone 下来的实际目录
+./start.sh               # 起 watchdog 守护 + 本地服务，并打开浏览器
 ```
 
 或直接前台起服务（不守护）：

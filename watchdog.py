@@ -25,22 +25,24 @@ import socket
 import subprocess
 import urllib.request
 
-PORT = 8571
-PROJECT_ROOT = "/Users/kelvinjiang/Desktop/实用工具开发/AgentMonitor-v3"
+PORT = int(os.environ.get("AGENTMONITOR_PORT", "8571"))
+# 项目根目录：以本文件所在目录为准，clone 到任何路径都能跑。
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 URL = f"http://127.0.0.1:{PORT}/api/services"
-PID_FILE = "/tmp/agentmonitor_watchdog_v3.pid"
-LOG_FILE = "/tmp/agentmonitor_watchdog_v3.log"
-SERVER_LOG = "/tmp/agentmonitor_server_v3.log"
+PID_FILE = f"/tmp/agentmonitor_watchdog_v3_{PORT}.pid"
+LOG_FILE = f"/tmp/agentmonitor_watchdog_v3_{PORT}.log"
+SERVER_LOG = f"/tmp/agentmonitor_server_v3_{PORT}.log"
 INTERVAL = 10.0  # 秒
 START_TIMEOUT = 6.0  # 等服务起来的最大秒数
 
-MANAGED_PY = "/Users/kelvinjiang/.workbuddy/binaries/python/versions/3.13.12/bin/python3"
+# 可选的解释器候选（按需自行覆盖）：环境变量 AGENTMONITOR_PYTHON 优先。
+MANAGED_PY = os.environ.get("AGENTMONITOR_PYTHON", "")
 SYSTEM_PY = "/usr/local/bin/python3"
 
 
 def pick_python():
     for p in (MANAGED_PY, SYSTEM_PY):
-        if os.path.isfile(p) and os.access(p, os.X_OK):
+        if p and os.path.isfile(p) and os.access(p, os.X_OK):
             return p
     return sys.executable
 

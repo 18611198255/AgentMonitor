@@ -2,9 +2,11 @@
 # Pi Agent Monitor V3 看板启动脚本：起 watchdog 守护（或直接起服务）+ 打开浏览器
 cd "$(dirname "$0")"
 
-PORT=8571
+PORT="${AGENTMONITOR_PORT:-8571}"
 URL="http://127.0.0.1:$PORT/"
-PID_FILE="/tmp/agentmonitor_watchdog_v3.pid"
+PID_FILE="/tmp/agentmonitor_watchdog_v3_${PORT}.pid"
+SERVER_LOG_FILE="/tmp/agentmonitor_server_v3_${PORT}.log"
+WATCHDOG_LOG_FILE="/tmp/agentmonitor_watchdog_v3_${PORT}.log"
 
 # 1) 服务已在跑 → 直接开浏览器
 if curl -s "http://127.0.0.1:$PORT/api/services" >/dev/null 2>&1; then
@@ -32,7 +34,7 @@ echo "打开浏览器: $URL"
 open "$URL"
 echo ""
 echo "看板已启动。"
-echo "  服务日志: /tmp/agentmonitor_server_v3.log"
-echo "  守护日志: /tmp/agentmonitor_watchdog_v3.log"
+echo "  服务日志: $SERVER_LOG_FILE"
+echo "  守护日志: $WATCHDOG_LOG_FILE"
 echo "  停止服务: pkill -f 'agentmonitor.server'"
-echo "  停止守护: kill \$(cat /tmp/agentmonitor_watchdog_v3.pid)"
+echo "  停止守护: kill \$(cat $PID_FILE)"
