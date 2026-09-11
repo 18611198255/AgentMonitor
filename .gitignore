@@ -1,5 +1,16 @@
 __pycache__/
 *.pyc
+*.pyo
 *.sqlite
+*.sqlite3
+*.db
+*.log
 .DS_Store
 .superpowers/
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/

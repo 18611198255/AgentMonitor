@@ -1,5 +1,7 @@
 # AgentMonitor V3 — Pi 运行状态监控看板
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 一个**零侵入、只读**的本地看板，实时监控你跑的 **Pi 会话**（网页版 + CLI 版），
 聚合 Token/成本，异常告警，支持历史回看 + 搜索与会话管理。
 
@@ -65,8 +67,8 @@ python3 -m agentmonitor.server 9000       # 指定端口
 停止（**务必先杀 watchdog，再杀 server**——若先杀 server，watchdog 会在 10 秒内自动把它重新拉起，导致永远停不掉）：
 
 ```bash
-kill $(cat /tmp/agentmonitor_watchdog_v3.pid)   # 1) 先杀守护，防止它 10s 内拉起 server
-pkill -f 'agentmonitor.server'                 # 2) 再杀服务本身
+kill $(cat /tmp/agentmonitor_watchdog_v3_8571.pid)   # 1) 先杀守护，防止它 10s 内拉起 server
+pkill -f 'agentmonitor.server'                       # 2) 再杀服务本身
 ```
 
 ## 技术
@@ -74,3 +76,14 @@ pkill -f 'agentmonitor.server'                 # 2) 再杀服务本身
 - 零第三方依赖：Python 标准库（`http.server` / `sqlite3` / `subprocess` / `urllib` / `json` / `unittest`），前端原生 HTML/JS/CSS（无框架无 CDN）。
 - 模块化包：`parser`（jsonl→Session 唯一解析）、`detectors/`（CLI + 网页版探测器统一 `detect()` 接口）、`merge`（合并去重）、`index`（SQLite 索引）、`aggregator`（聚合）、`alerts`（告警）、`actions`（kill/restart）、`server`（HTTP 路由，唯一入口）。
 - 安全：`/api/jump` 路径白名单（仅 `~/.pi/agent/sessions` 内）、`/api/kill` 进程白名单、`HEAD` 统一 404、跳转脚本仅拼接 iTerm 自身返回的 `unique id`（防注入/防泄露源码）。
+
+## 配置
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `AGENTMONITOR_PORT` | `8571` | 服务端口（watchdog 与 start.sh 共用） |
+| `AGENTMONITOR_PYTHON` | 自动探测 | 指定 Python 解释器（watchdog 拉起服务用） |
+
+## License
+
+[MIT](LICENSE) © 2026 18611198255
