@@ -10,6 +10,7 @@
 import glob
 import os
 import time
+from typing import Optional
 
 from agentmonitor import constants
 from agentmonitor.detectors.base import SessionRef
@@ -46,7 +47,7 @@ def _make_placeholder(cwd: str, pid: str) -> Session:
 def merge_sessions(
     cli_refs: list[SessionRef],
     web_refs: list[SessionRef],
-    now: float | None = None,
+    now: Optional[float] = None,
 ) -> list[Session]:
     """合并 CLI/网页版探测器结果 + jsonl → 活跃会话列表（按 age_seconds 升序）。"""
     now = now or time.time()
